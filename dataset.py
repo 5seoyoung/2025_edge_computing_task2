@@ -83,11 +83,24 @@ class EchoNetVideoDataset(Dataset):
         video_filename = row['FileName']
         ef_label = float(row['EF'])
         
+        # 파일명에 확장자가 없으면 .avi 추가
+        if not video_filename.endswith('.avi'):
+            video_filename = video_filename + '.avi'
+        
         # 비디오 파일 경로
         video_path = self.video_dir / video_filename
         
         if not video_path.exists():
-            raise FileNotFoundError(f"Video not found: {video_path}")
+            # 확장자 없이도 시도
+            video_path_no_ext = self.video_dir / row['FileName']
+            if video_path_no_ext.exists():
+                video_path = video_path_no_ext
+            else:
+                raise FileNotFoundError(
+                    f"Video not found: {video_path}\n"
+                    f"Also tried: {video_path_no_ext}\n"
+                    f"Available files in directory: {list(self.video_dir.glob('*'))[:5]}"
+                )
         
         # 비디오 로드 및 프레임 샘플링
         video_tensor = self._load_video(video_path)
