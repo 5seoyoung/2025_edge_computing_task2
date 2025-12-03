@@ -52,17 +52,34 @@ class EchoNetVideoDataset(Dataset):
         if 'FileName' not in df.columns or 'EF' not in df.columns:
             raise ValueError("CSV must contain 'FileName' and 'EF' columns")
         
-        # Train/Val split
+        # Train/Val/Test split
         if split is not None:
-            n_total = len(df)
-            n_train = int(n_total * train_ratio)
-            
-            if split == 'train':
-                df = df.iloc[:n_train].reset_index(drop=True)
-            elif split == 'val':
-                df = df.iloc[n_train:].reset_index(drop=True)
+            # Split 컬럼이 있으면 사용
+            if 'Split' in df.columns:
+                split_mapping = {
+                    'train': 'TRAIN',
+                    'val': 'VAL',
+                    'test': 'TEST',
+                }
+                if split in split_mapping:
+                    split_value = split_mapping[split]
+                    df = df[df['Split'] == split_value].reset_index(drop=True)
+                else:
+                    raise ValueError(f"split must be 'train', 'val', or 'test', got {split}")
             else:
-                raise ValueError(f"split must be 'train' or 'val', got {split}")
+                # Split 컬럼이 없으면 train_ratio로 나눔
+                n_total = len(df)
+                n_train = int(n_total * train_ratio)
+                
+                if split == 'train':
+                    df = df.iloc[:n_train].reset_index(drop=True)
+                elif split == 'val':
+                    df = df.iloc[n_train:].reset_index(drop=True)
+                elif split == 'test':
+                    # Test split이 없으면 val을 사용
+                    df = df.iloc[n_train:].reset_index(drop=True)
+                else:
+                    raise ValueError(f"split must be 'train', 'val', or 'test', got {split}")
         
         self.df = df.reset_index(drop=True)
         
@@ -219,4 +236,97 @@ def get_dataloaders(
     )
     
     return train_loader, val_loader
+
+
+def create_data_loaders(
+    video_dir: Path,
+    filelist_path: Path,
+    num_frames: int = config.NUM_FRAMES,
+    image_size: int = config.IMG_SIZE,
+    batch_size: int = config.BATCH_SIZE,
+    num_workers: int = config.NUM_WORKERS,
+):
+    """
+    Split 컬럼 기반으로 Train/Val/Test DataLoader를 생성합니다.
+    FileList.csv에 'Split' 컬럼이 있어야 합니다.
+    
+    Returns:
+        train_loader, val_loader, test_loader
+    """
+    # Split 컬럼 확인
+    df = pd.read_csv(filelist_path)
+    if 'Split' not in df.columns:
+        # Split 컬럼이 없으면 기존 방식 사용 (train/val만)
+        print("Warning: 'Split' column not found. Using train/val split only.")
+        train_loader, val_loader = get_dataloaders(
+            video_dir=video_dir,
+            filelist_path=filelist_path,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            num_frames=num_frames,
+            img_size=image_size,
+        )
+        # Test loader는 val_loader를 복사 (실제로는 사용하지 않음)
+        test_loader = val_loader
+        return train_loader, val_loader, test_loader
+    
+    # Split 기반으로 데이터셋 생성
+    train_dataset = EchoNetVideoDataset(
+        video_dir=video_dir,
+        filelist_path=filelist_path,
+        num_frames=num_frames,
+        img_size=image_size,
+        split='train',
+        train_ratio=0.8,  # Split 컬럼이 있으면 이 값은 무시됨
+    )
+    
+    val_dataset = EchoNetVideoDataset(
+        video_dir=video_dir,
+        filelist_path=filelist_path,
+        num_frames=num_frames,
+        img_size=image_size,
+        split='val',
+        train_ratio=0.8,
+    )
+    
+    # Test split이 있는지 확인
+    if 'TEST' in df['Split'].values:
+        test_dataset = EchoNetVideoDataset(
+            video_dir=video_dir,
+            filelist_path=filelist_path,
+            num_frames=num_frames,
+            img_size=image_size,
+            split='test',
+            train_ratio=0.8,
+        )
+    else:
+        # Test split이 없으면 val을 test로 사용
+        print("Warning: 'TEST' split not found. Using VAL split as TEST.")
+        test_dataset = val_dataset
+    
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
+    
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
+    
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True if torch.cuda.is_available() else False,
+    )
+    
+    return train_loader, val_loader, test_loader
 
