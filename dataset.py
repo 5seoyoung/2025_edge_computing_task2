@@ -97,27 +97,39 @@ class EchoNetVideoDataset(Dataset):
             ef_label: EF 값 (float)
         """
         row = self.df.iloc[idx]
-        video_filename = row['FileName']
+        original_filename = str(row['FileName']).strip()
         ef_label = float(row['EF'])
         
-        # 파일명에 확장자가 없으면 .avi 추가
-        if not video_filename.endswith('.avi'):
-            video_filename = video_filename + '.avi'
+        # 여러 가능한 파일명 시도
+        possible_filenames = [
+            original_filename,  # 원본 파일명
+            original_filename + '.avi',  # .avi 추가
+            original_filename + '.AVI',  # 대문자 .AVI
+        ]
         
-        # 비디오 파일 경로
-        video_path = self.video_dir / video_filename
+        video_path = None
+        for filename in possible_filenames:
+            candidate_path = self.video_dir / filename
+            if candidate_path.exists():
+                video_path = candidate_path
+                break
         
-        if not video_path.exists():
-            # 확장자 없이도 시도
-            video_path_no_ext = self.video_dir / row['FileName']
-            if video_path_no_ext.exists():
-                video_path = video_path_no_ext
+        if video_path is None:
+            # 디렉토리의 실제 파일 목록 확인 (부분 매칭)
+            available_files = list(self.video_dir.glob('*'))
+            matching_files = [f for f in available_files if original_filename in f.name]
+            
+            error_msg = (
+                f"Video not found for filename: '{original_filename}'\n"
+                f"Tried: {[str(self.video_dir / f) for f in possible_filenames]}\n"
+            )
+            
+            if matching_files:
+                error_msg += f"Found similar files: {[f.name for f in matching_files[:5]]}\n"
             else:
-                raise FileNotFoundError(
-                    f"Video not found: {video_path}\n"
-                    f"Also tried: {video_path_no_ext}\n"
-                    f"Available files in directory: {list(self.video_dir.glob('*'))[:5]}"
-                )
+                error_msg += f"Available files (first 10): {[f.name for f in available_files[:10]]}\n"
+            
+            raise FileNotFoundError(error_msg)
         
         # 비디오 로드 및 프레임 샘플링
         video_tensor = self._load_video(video_path)
