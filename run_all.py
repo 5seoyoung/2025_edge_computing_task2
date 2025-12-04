@@ -154,6 +154,10 @@ def run_all_experiments(
         'qat': qat_results['qat'],
     }
     
+    # QAT 히스토리 추가 (있는 경우)
+    if 'qat_history' in qat_results.get('qat', {}):
+        all_results['qat']['qat_history'] = qat_results['qat']['qat_history']
+    
     # 비교 테이블 생성
     comparison_df = pd.DataFrame([
         {

@@ -132,6 +132,10 @@ def run_qat_experiment(
     results['qat']['latency_improvement_ms'] = latency_improvement
     results['qat']['latency_improvement_percent'] = (latency_improvement / baseline_performance['latency_ms']) * 100
     
+    # QAT 히스토리 추가 (있는 경우)
+    if 'qat_history' in qat_performance:
+        results['qat']['qat_history'] = qat_performance['qat_history']
+    
     # 6. 결과 출력
     if verbose:
         print("\n" + "="*60)
