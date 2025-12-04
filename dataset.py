@@ -102,8 +102,8 @@ class EchoNetVideoDataset(Dataset):
         
         # 여러 가능한 파일명 시도
         possible_filenames = [
+            original_filename + '.avi',  # .avi 추가 (먼저 시도)
             original_filename,  # 원본 파일명
-            original_filename + '.avi',  # .avi 추가
             original_filename + '.AVI',  # 대문자 .AVI
         ]
         
