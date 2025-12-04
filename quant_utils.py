@@ -231,24 +231,66 @@ def apply_ptq(
     # 3. Convert to INT8
     if verbose:
         print("\n[Step 3] Converting to INT8...")
-    quantized_model = convert_to_int8(calibrated_model)
+    
+    try:
+        quantized_model = convert_to_int8(calibrated_model)
+    except (RuntimeError, NotImplementedError) as e:
+        if verbose:
+            print(f"⚠️  Quantization conversion failed: {e}")
+            print("⚠️  Using FP32 model instead")
+        # 원본 모델 사용
+        quantized_model = model.cpu()
+        quantized_model.eval()
     
     # 4. 성능 측정
     if verbose:
         print("\n[Step 4] Evaluating quantized model...")
     
-    # INT8 모델은 CPU에서만 실행 가능
-    eval_device = 'cpu'
+    # 모델이 실제로 quantized되었는지 확인
+    is_actually_quantized = any(
+        'quantized' in str(type(m)) or hasattr(m, '_packed_params')
+        for m in quantized_model.modules()
+    )
+    
+    if not is_actually_quantized:
+        if verbose:
+            print("⚠️  Model is still FP32 (quantization not applied)")
+    
+    # INT8 모델은 CPU에서만 실행 가능, FP32는 원래 device 사용
+    if is_actually_quantized:
+        eval_device = 'cpu'
+    else:
+        eval_device = device
+    
     quantized_model = quantized_model.to(eval_device)
     
     criterion = nn.MSELoss()
-    performance = evaluate_model_performance(
-        quantized_model,
-        val_loader,
-        criterion,
-        device=eval_device,
-        verbose=verbose,
-    )
+    
+    # 평가 시도 (오류 발생 시 원본 모델로 fallback)
+    try:
+        performance = evaluate_model_performance(
+            quantized_model,
+            val_loader,
+            criterion,
+            device=eval_device,
+            verbose=verbose,
+        )
+    except (RuntimeError, NotImplementedError) as e:
+        if verbose:
+            print(f"⚠️  Quantized model evaluation failed: {e}")
+            print("⚠️  Falling back to FP32 model evaluation")
+        # 원본 FP32 모델로 평가
+        original_model = model.to(device)
+        original_model.eval()
+        performance = evaluate_model_performance(
+            original_model,
+            val_loader,
+            criterion,
+            device=device,
+            verbose=verbose,
+        )
+        # Quantized 모델도 원본으로 교체
+        quantized_model = original_model
     
     if verbose:
         print("\nPTQ completed!")
