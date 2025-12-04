@@ -34,23 +34,37 @@ def prepare_ptq_model(model: nn.Module) -> nn.Module:
     
     # Quantization 설정
     # per_tensor qscheme 사용 (per_channel은 일부 환경에서 지원되지 않을 수 있음)
-    # 모든 서브모듈에 명시적으로 설정
-    per_tensor_qconfig = torch.quantization.QConfig(
-        activation=torch.quantization.MinMaxObserver.with_args(
-            dtype=torch.quint8,
-            qscheme=torch.per_tensor_affine
-        ),
-        weight=torch.quantization.MinMaxObserver.with_args(
-            dtype=torch.qint8,
-            qscheme=torch.per_tensor_symmetric
+    # qnnpack backend는 per_channel을 지원하지 않으므로 더 안전함
+    try:
+        # qnnpack backend 사용 (per_channel 미지원, per_tensor만 사용)
+        per_tensor_qconfig = torch.quantization.get_default_qconfig('qnnpack')
+    except Exception:
+        # 커스텀 per_tensor qconfig 생성
+        per_tensor_qconfig = torch.quantization.QConfig(
+            activation=torch.quantization.MinMaxObserver.with_args(
+                dtype=torch.quint8,
+                qscheme=torch.per_tensor_affine
+            ),
+            weight=torch.quantization.MinMaxObserver.with_args(
+                dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric
+            )
         )
-    )
     
     # 모델의 모든 서브모듈에 qconfig 설정
     model.qconfig = per_tensor_qconfig
-    for name, module in model.named_modules():
-        if isinstance(module, (nn.Conv2d, nn.Linear, nn.BatchNorm2d)):
+    # 모든 모듈에 재귀적으로 설정
+    def set_qconfig_recursive(module):
+        for child in module.children():
+            if len(list(child.children())) == 0:  # leaf module
+                if hasattr(child, 'qconfig'):
+                    child.qconfig = per_tensor_qconfig
+            else:
+                set_qconfig_recursive(child)
+        if hasattr(module, 'qconfig'):
             module.qconfig = per_tensor_qconfig
+    
+    set_qconfig_recursive(model)
     
     # Prepare
     prepared_model = torch.quantization.prepare(model, inplace=False)
@@ -220,29 +234,43 @@ def prepare_qat_model(model: nn.Module) -> nn.Module:
     
     # Quantization 설정
     # per_tensor qscheme 사용 (per_channel은 일부 환경에서 지원되지 않을 수 있음)
-    # 모든 서브모듈에 명시적으로 설정
-    per_tensor_qat_qconfig = torch.quantization.QConfig(
-        activation=torch.quantization.FakeQuantize.with_args(
-            observer=torch.quantization.MovingAverageMinMaxObserver,
-            quant_min=0,
-            quant_max=255,
-            dtype=torch.quint8,
-            qscheme=torch.per_tensor_affine
-        ),
-        weight=torch.quantization.FakeQuantize.with_args(
-            observer=torch.quantization.MovingAverageMinMaxObserver,
-            quant_min=-128,
-            quant_max=127,
-            dtype=torch.qint8,
-            qscheme=torch.per_tensor_symmetric
+    # qnnpack backend는 per_channel을 지원하지 않으므로 더 안전함
+    try:
+        # qnnpack backend 사용 (per_channel 미지원, per_tensor만 사용)
+        per_tensor_qat_qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
+    except Exception:
+        # 커스텀 per_tensor qat qconfig 생성
+        per_tensor_qat_qconfig = torch.quantization.QConfig(
+            activation=torch.quantization.FakeQuantize.with_args(
+                observer=torch.quantization.MovingAverageMinMaxObserver,
+                quant_min=0,
+                quant_max=255,
+                dtype=torch.quint8,
+                qscheme=torch.per_tensor_affine
+            ),
+            weight=torch.quantization.FakeQuantize.with_args(
+                observer=torch.quantization.MovingAverageMinMaxObserver,
+                quant_min=-128,
+                quant_max=127,
+                dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric
+            )
         )
-    )
     
     # 모델의 모든 서브모듈에 qconfig 설정
     model.qconfig = per_tensor_qat_qconfig
-    for name, module in model.named_modules():
-        if isinstance(module, (nn.Conv2d, nn.Linear, nn.BatchNorm2d)):
+    # 모든 모듈에 재귀적으로 설정
+    def set_qconfig_recursive(module):
+        for child in module.children():
+            if len(list(child.children())) == 0:  # leaf module
+                if hasattr(child, 'qconfig'):
+                    child.qconfig = per_tensor_qat_qconfig
+            else:
+                set_qconfig_recursive(child)
+        if hasattr(module, 'qconfig'):
             module.qconfig = per_tensor_qat_qconfig
+    
+    set_qconfig_recursive(model)
     
     # Prepare QAT
     prepared_model = torch.quantization.prepare_qat(model, inplace=False)
