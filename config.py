@@ -7,8 +7,10 @@ import os
 from pathlib import Path
 
 # ==================== 경로 설정 ====================
-# Colab에서 실행 시 이 경로들을 수정하세요
-BASE_DIR = Path("/content/sample_echonet")  # TODO: Colab에서 실제 경로로 변경
+# 로컬 실행 시: 프로젝트 루트 기준 상대 경로
+# Colab 실행 시: 절대 경로 사용 (예: /content/sample_echonet)
+_script_dir = Path(__file__).parent.absolute()
+BASE_DIR = _script_dir / "sample_echonet_dynamic"  # 로컬 기본 경로
 VIDEO_DIR = BASE_DIR / "Videos"
 FILELIST_PATH = BASE_DIR / "FileList.csv"
 
