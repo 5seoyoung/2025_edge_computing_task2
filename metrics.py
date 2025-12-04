@@ -84,12 +84,24 @@ def measure_latency(
     Returns:
         평균 Latency (ms/video)
     """
+    # Quantized model 감지
+    is_quantized = any(
+        'quantized' in str(type(m)) or hasattr(m, '_packed_params')
+        for m in model.modules()
+    )
+    
+    if is_quantized:
+        measure_device = 'cpu'
+        model = model.cpu()
+    else:
+        measure_device = device
+        model = model.to(device)
+    
     model.eval()
-    model = model.to(device)
     
     # 데이터 샘플 하나 가져오기
     sample_video, _ = next(iter(dataloader))
-    sample_video = sample_video.to(device)
+    sample_video = sample_video.to(measure_device)
     
     # Warm-up
     if verbose:
@@ -100,7 +112,7 @@ def measure_latency(
             _ = model(sample_video)
     
     # GPU 동기화
-    if device == 'cuda':
+    if measure_device == 'cuda':
         torch.cuda.synchronize()
     
     # Latency 측정
@@ -111,13 +123,13 @@ def measure_latency(
     
     with torch.no_grad():
         for i in range(iterations):
-            if device == 'cuda':
+            if measure_device == 'cuda':
                 torch.cuda.synchronize()
             
             start_time = time.time()
             _ = model(sample_video)
             
-            if device == 'cuda':
+            if measure_device == 'cuda':
                 torch.cuda.synchronize()
             
             end_time = time.time()
@@ -154,7 +166,19 @@ def evaluate_model_performance(
     Returns:
         성능 딕셔너리 {'mae': float, 'size_mb': float, 'latency_ms': float}
     """
-    model = model.to(device)
+    # Quantized model 감지 (quantized 모듈이 있으면 CPU로 강제)
+    is_quantized = any(
+        'quantized' in str(type(m)) or hasattr(m, '_packed_params')
+        for m in model.modules()
+    )
+    
+    if is_quantized:
+        eval_device = 'cpu'
+        model = model.cpu()
+    else:
+        eval_device = device
+        model = model.to(device)
+    
     model.eval()
     
     # MAE 계산
@@ -166,8 +190,8 @@ def evaluate_model_performance(
     
     with torch.no_grad():
         for videos, ef_labels in dataloader:
-            videos = videos.to(device)
-            ef_labels = ef_labels.to(device).float().unsqueeze(1)
+            videos = videos.to(eval_device)
+            ef_labels = ef_labels.to(eval_device).float().unsqueeze(1)
             
             ef_pred = model(videos)
             
@@ -186,7 +210,7 @@ def evaluate_model_performance(
     # Latency 측정
     if verbose:
         print("Measuring latency...")
-    latency_ms = measure_latency(model, dataloader, device, verbose=verbose)
+    latency_ms = measure_latency(model, dataloader, eval_device, verbose=verbose)
     
     results = {
         'mae': mae,
