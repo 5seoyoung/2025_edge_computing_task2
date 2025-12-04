@@ -87,17 +87,28 @@ def run_ptq_experiment(
         verbose=verbose,
     )
     
-    # 4. PTQ 적용
+    # 4. PTQ 적용 (Static PTQ 실패 시 Dynamic Quantization 자동 시도)
     if verbose:
         print("\n[4] Applying PTQ...")
     
-    quantized_model, ptq_performance = apply_ptq(
-        model,
-        val_loader,
-        calibration_samples=config.CALIBRATION_SAMPLES,
-        device=device,
-        verbose=verbose,
-    )
+    try:
+        quantized_model, ptq_performance = apply_ptq(
+            model,
+            val_loader,
+            calibration_samples=config.CALIBRATION_SAMPLES,
+            device=device,
+            verbose=verbose,
+        )
+    except Exception as e:
+        if verbose:
+            print(f"\n⚠️  PTQ failed: {e}")
+            print("⚠️  Trying Dynamic Quantization instead...")
+        
+        # Dynamic Quantization 직접 시도
+        from quant_utils import apply_dynamic_quantization_simple
+        quantized_model, ptq_performance = apply_dynamic_quantization_simple(
+            model, val_loader, device, verbose
+        )
     
     # 5. 결과 정리
     results = {
