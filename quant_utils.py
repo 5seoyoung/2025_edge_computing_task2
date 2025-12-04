@@ -25,18 +25,29 @@ def prepare_ptq_model(model: nn.Module) -> nn.Module:
     Returns:
         준비된 모델
     """
+    # Quantization backend 설정 (중요!)
+    # CPU에서 실행 시 qnnpack backend 사용
+    if not torch.cuda.is_available():
+        try:
+            torch.backends.quantized.engine = 'qnnpack'
+        except AttributeError:
+            # 구버전 PyTorch
+            pass
+    
     # 모델을 eval 모드로 설정
     model.eval()
+    
+    # 모델을 CPU로 이동 (quantization은 CPU에서만 지원)
+    model = model.cpu()
     
     # Fuse model (conv-bn-relu 결합)
     if hasattr(model, 'fuse_model'):
         model.fuse_model()
     
     # Quantization 설정
-    # per_tensor qscheme 사용 (per_channel은 일부 환경에서 지원되지 않을 수 있음)
-    # qnnpack backend는 per_channel을 지원하지 않으므로 더 안전함
+    # qnnpack backend 사용 (per_channel 미지원, per_tensor만 사용)
     try:
-        # qnnpack backend 사용 (per_channel 미지원, per_tensor만 사용)
+        # qnnpack backend 사용
         per_tensor_qconfig = torch.quantization.get_default_qconfig('qnnpack')
     except Exception:
         # 커스텀 per_tensor qconfig 생성
@@ -93,7 +104,9 @@ def calibrate_model(
         캘리브레이션된 모델
     """
     prepared_model.eval()
-    prepared_model = prepared_model.to(device)
+    # Quantization은 CPU에서만 지원되므로 CPU로 이동
+    prepared_model = prepared_model.cpu()
+    calibration_device = 'cpu'
     
     count = 0
     
@@ -107,7 +120,7 @@ def calibrate_model(
             if count >= num_samples:
                 break
             
-            videos = videos.to(device)
+            videos = videos.to(calibration_device)
             _ = prepared_model(videos)
             
             count += videos.size(0)
@@ -131,6 +144,17 @@ def convert_to_int8(prepared_model: nn.Module) -> nn.Module:
     Returns:
         INT8 모델
     """
+    # Quantization backend 설정 확인
+    if not torch.cuda.is_available():
+        try:
+            torch.backends.quantized.engine = 'qnnpack'
+        except AttributeError:
+            pass
+    
+    # 모델을 CPU로 이동 (quantization은 CPU에서만 지원)
+    prepared_model = prepared_model.cpu()
+    prepared_model.eval()
+    
     quantized_model = torch.quantization.convert(prepared_model, inplace=False)
     return quantized_model
 
@@ -193,9 +217,9 @@ def apply_ptq(
     if verbose:
         print("\n[Step 4] Evaluating quantized model...")
     
-    # INT8 모델은 CPU에서만 실행 가능 (일반적으로)
-    # GPU 사용 시 다른 방법 필요
-    eval_device = 'cpu' if device == 'cpu' else device
+    # INT8 모델은 CPU에서만 실행 가능
+    eval_device = 'cpu'
+    quantized_model = quantized_model.to(eval_device)
     
     criterion = nn.MSELoss()
     performance = evaluate_model_performance(
@@ -225,18 +249,31 @@ def prepare_qat_model(model: nn.Module) -> nn.Module:
     Returns:
         준비된 모델
     """
+    # Quantization backend 설정 (중요!)
+    # CPU에서 실행 시 qnnpack backend 사용
+    if not torch.cuda.is_available():
+        try:
+            torch.backends.quantized.engine = 'qnnpack'
+        except AttributeError:
+            # 구버전 PyTorch
+            pass
+    
     # 모델을 train 모드로 설정 (QAT는 학습 필요)
     model.train()
+    
+    # 모델을 CPU로 이동 (quantization은 CPU에서만 지원)
+    # QAT는 학습 중이므로 GPU 사용 가능하지만, convert 시 CPU 필요
+    # 여기서는 일단 CPU로 이동
+    model = model.cpu()
     
     # Fuse model
     if hasattr(model, 'fuse_model'):
         model.fuse_model()
     
     # Quantization 설정
-    # per_tensor qscheme 사용 (per_channel은 일부 환경에서 지원되지 않을 수 있음)
-    # qnnpack backend는 per_channel을 지원하지 않으므로 더 안전함
+    # qnnpack backend 사용 (per_channel 미지원, per_tensor만 사용)
     try:
-        # qnnpack backend 사용 (per_channel 미지원, per_tensor만 사용)
+        # qnnpack backend 사용
         per_tensor_qat_qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
     except Exception:
         # 커스텀 per_tensor qat qconfig 생성
@@ -349,13 +386,16 @@ def apply_qat(
     if verbose:
         print("\n[Step 3] Converting to INT8...")
     prepared_model.eval()
-    quantized_model = torch.quantization.convert(prepared_model, inplace=False)
+    prepared_model = prepared_model.cpu()  # CPU로 이동
+    quantized_model = convert_to_int8(prepared_model)
     
     # 4. 성능 측정
     if verbose:
         print("\n[Step 4] Evaluating quantized model...")
     
-    eval_device = 'cpu' if device == 'cpu' else device
+    # INT8 모델은 CPU에서만 실행 가능
+    eval_device = 'cpu'
+    quantized_model = quantized_model.to(eval_device)
     
     performance = evaluate_model_performance(
         quantized_model,
