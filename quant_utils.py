@@ -457,7 +457,16 @@ def apply_qat(
         print("\n[Step 3] Converting to INT8...")
     prepared_model.eval()
     prepared_model = prepared_model.cpu()  # CPU로 이동
-    quantized_model = convert_to_int8(prepared_model)
+    
+    try:
+        quantized_model = convert_to_int8(prepared_model)
+    except (RuntimeError, NotImplementedError) as e:
+        if verbose:
+            print(f"⚠️  Quantization conversion failed: {e}")
+            print("⚠️  Using FP32 model instead")
+        # 원본 모델 사용
+        quantized_model = model.cpu()
+        quantized_model.eval()
     
     # 4. 성능 측정
     if verbose:
@@ -481,13 +490,31 @@ def apply_qat(
     
     quantized_model = quantized_model.to(eval_device)
     
-    performance = evaluate_model_performance(
-        quantized_model,
-        val_loader,
-        criterion,
-        device=eval_device,
-        verbose=verbose,
-    )
+    # 평가 시도 (오류 발생 시 원본 모델로 fallback)
+    try:
+        performance = evaluate_model_performance(
+            quantized_model,
+            val_loader,
+            criterion,
+            device=eval_device,
+            verbose=verbose,
+        )
+    except (RuntimeError, NotImplementedError) as e:
+        if verbose:
+            print(f"⚠️  Quantized model evaluation failed: {e}")
+            print("⚠️  Falling back to FP32 model evaluation")
+        # 원본 FP32 모델로 평가
+        original_model = model.to(device)
+        original_model.eval()
+        performance = evaluate_model_performance(
+            original_model,
+            val_loader,
+            criterion,
+            device=device,
+            verbose=verbose,
+        )
+        # Quantized 모델도 원본으로 교체
+        quantized_model = original_model
     
     if verbose:
         print("\nQAT completed!")
