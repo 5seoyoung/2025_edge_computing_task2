@@ -186,20 +186,40 @@ def apply_dynamic_quantization_simple(
     verbose: bool = config.VERBOSE,
 ) -> Tuple[nn.Module, dict]:
     """
-    Dynamic Quantization을 적용합니다 (더 간단하고 호환성이 좋음).
+    Dynamic Quantization을 적용합니다 (Linear 레이어만 - 가장 안정적).
+    Backend를 제대로 초기화하여 작동하도록 합니다.
     """
     if verbose:
-        print("\n[Alternative] Trying Dynamic Quantization...")
+        print("\n[Alternative] Trying Linear-Only Dynamic Quantization...")
+    
+    # Backend 초기화 (매우 중요! 모델 로드 전에 해야 함)
+    import torch.backends.quantized
+    try:
+        torch.backends.quantized.engine = 'qnnpack'
+        if verbose:
+            print(f"✅ Set quantization backend to: {torch.backends.quantized.engine}")
+    except Exception as e:
+        if verbose:
+            print(f"⚠️  Could not set backend: {e}")
     
     model = model.cpu()
     model.eval()
     
     try:
+        # Linear 레이어만 quantize (가장 안정적)
         quantized_model = torch.quantization.quantize_dynamic(
             model,
-            {nn.Linear, nn.Conv2d},
+            {nn.Linear},  # Linear만 quantize
             dtype=torch.qint8
         )
+        
+        if verbose:
+            # Quantized 모듈 확인
+            quantized_count = sum(
+                1 for m in quantized_model.modules() 
+                if hasattr(m, '_packed_params') or 'quantized' in str(type(m))
+            )
+            print(f"✅ Quantized {quantized_count} Linear module(s)")
         
         criterion = nn.MSELoss()
         performance = evaluate_model_performance(
@@ -216,8 +236,46 @@ def apply_dynamic_quantization_simple(
         return quantized_model, performance
     except Exception as e:
         if verbose:
-            print(f"⚠️  Dynamic quantization also failed: {e}")
-        raise
+            print(f"⚠️  Dynamic quantization failed: {e}")
+            print("⚠️  Trying individual layer quantization...")
+        
+        # 대안: 각 Linear 레이어를 개별적으로 quantize
+        quantized_model = model
+        linear_count = 0
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                try:
+                    quantized_linear = torch.quantization.quantize_dynamic(
+                        module,
+                        dtype=torch.qint8
+                    )
+                    # 모델에 적용
+                    parent_name = '.'.join(name.split('.')[:-1])
+                    child_name = name.split('.')[-1]
+                    if parent_name:
+                        parent = dict(model.named_modules())[parent_name]
+                        setattr(parent, child_name, quantized_linear)
+                    else:
+                        setattr(model, child_name, quantized_linear)
+                    linear_count += 1
+                except:
+                    pass
+        
+        if linear_count > 0:
+            if verbose:
+                print(f"✅ Quantized {linear_count} Linear layer(s) individually")
+            
+            criterion = nn.MSELoss()
+            performance = evaluate_model_performance(
+                quantized_model,
+                val_loader,
+                criterion,
+                device='cpu',
+                verbose=verbose,
+            )
+            return quantized_model, performance
+        else:
+            raise RuntimeError("Failed to quantize any Linear layers")
 
 
 def apply_ptq(
@@ -532,17 +590,27 @@ def apply_qat(
     prepared_model.eval()
     prepared_model = prepared_model.cpu()  # CPU로 이동
     
+    # Static quantization 시도
+    quantized_model = None
     try:
         quantized_model = convert_to_int8(prepared_model)
+        # 실제로 quantized되었는지 확인
+        is_quantized = any(
+            'quantized' in str(type(m)) or hasattr(m, '_packed_params')
+            for m in quantized_model.modules()
+        )
+        if not is_quantized:
+            raise RuntimeError("Model was not actually quantized")
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
             print(f"⚠️  Static quantization conversion failed: {e}")
             print("⚠️  Trying Dynamic Quantization as fallback...")
         
-        # Dynamic Quantization 시도
+        # Dynamic Quantization 시도 (QAT fine-tuning된 모델 사용)
         try:
+            # Fine-tuning된 모델을 Dynamic quantization
             quantized_model, performance = apply_dynamic_quantization_simple(
-                model, val_loader, device, verbose
+                prepared_model, val_loader, device, verbose
             )
             # QAT 히스토리를 performance에 추가
             performance['qat_history'] = qat_history

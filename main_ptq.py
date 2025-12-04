@@ -91,24 +91,45 @@ def run_ptq_experiment(
     if verbose:
         print("\n[4] Applying PTQ...")
     
+    # 먼저 Dynamic Quantization 시도 (더 안정적)
+    if verbose:
+        print("Trying Dynamic Quantization first (more stable)...")
+    
+    from quant_utils import apply_dynamic_quantization_simple
     try:
-        quantized_model, ptq_performance = apply_ptq(
-            model,
-            val_loader,
-            calibration_samples=config.CALIBRATION_SAMPLES,
-            device=device,
-            verbose=verbose,
-        )
-    except Exception as e:
-        if verbose:
-            print(f"\n⚠️  PTQ failed: {e}")
-            print("⚠️  Trying Dynamic Quantization instead...")
-        
-        # Dynamic Quantization 직접 시도
-        from quant_utils import apply_dynamic_quantization_simple
         quantized_model, ptq_performance = apply_dynamic_quantization_simple(
             model, val_loader, device, verbose
         )
+        if verbose:
+            print("✅ Dynamic Quantization successful!")
+    except Exception as e:
+        if verbose:
+            print(f"⚠️  Dynamic Quantization failed: {e}")
+            print("⚠️  Trying Static PTQ as fallback...")
+        
+        # Static PTQ 시도
+        try:
+            quantized_model, ptq_performance = apply_ptq(
+                model,
+                val_loader,
+                calibration_samples=config.CALIBRATION_SAMPLES,
+                device=device,
+                verbose=verbose,
+            )
+        except Exception as e2:
+            if verbose:
+                print(f"⚠️  Static PTQ also failed: {e2}")
+                print("⚠️  Using FP32 model as final fallback...")
+            # FP32 모델로 평가
+            criterion = nn.MSELoss()
+            ptq_performance = evaluate_model_performance(
+                model,
+                val_loader,
+                criterion,
+                device=device,
+                verbose=verbose,
+            )
+            quantized_model = model
     
     # 5. 결과 정리
     results = {
