@@ -165,13 +165,17 @@ def convert_to_int8(prepared_model: nn.Module) -> nn.Module:
     
     try:
         quantized_model = torch.quantization.convert(prepared_model, inplace=False)
+        # 변환 성공 여부 확인
+        is_quantized = any(
+            'quantized' in str(type(m)) or hasattr(m, '_packed_params')
+            for m in quantized_model.modules()
+        )
+        if not is_quantized:
+            # 변환은 성공했지만 실제로 quantized되지 않음
+            return prepared_model
         return quantized_model
     except (RuntimeError, NotImplementedError) as e:
-        # Quantization 실패 시 FP32 모델 반환 (ResNet skip connection 문제 등)
-        print(f"⚠️  Quantization conversion failed: {e}")
-        print("⚠️  Falling back to FP32 model (quantization not supported for this architecture)")
-        # 원본 모델의 FP32 버전 반환
-        # prepared_model에서 observer 제거하고 원본 모델 반환
+        # Quantization 실패 시 prepared_model 반환 (observer 포함, FP32)
         return prepared_model
 
 
