@@ -311,11 +311,53 @@ if __name__ == "__main__":
     if args.qat_epochs:
         config.QAT_EPOCHS = args.qat_epochs
     
-    # 데이터 경로 확인
+    # 데이터 경로 확인 및 자동 탐색
     if not config.VIDEO_DIR.exists():
-        raise FileNotFoundError(f"Video directory not found: {config.VIDEO_DIR}")
+        # 자동으로 Videos 디렉토리 찾기 시도
+        possible_paths = [
+            config.BASE_DIR / "Videos",
+            config.BASE_DIR.parent / "Videos",
+            config.BASE_DIR / "sample_echonet_dynamic" / "Videos",
+        ]
+        
+        found = False
+        for path in possible_paths:
+            if path.exists():
+                config.VIDEO_DIR = path
+                config.FILELIST_PATH = path.parent / "FileList.csv"
+                print(f"Found Videos directory at: {config.VIDEO_DIR}")
+                found = True
+                break
+        
+        if not found:
+            raise FileNotFoundError(
+                f"Video directory not found: {config.VIDEO_DIR}\n"
+                f"Searched in: {[str(p) for p in possible_paths]}\n"
+                f"Please check your --data_root path or ensure Videos/ directory exists."
+            )
+    
     if not config.FILELIST_PATH.exists():
-        raise FileNotFoundError(f"FileList.csv not found: {config.FILELIST_PATH}")
+        # FileList.csv 자동 탐색
+        possible_filelists = [
+            config.BASE_DIR / "FileList.csv",
+            config.VIDEO_DIR.parent / "FileList.csv",
+            config.BASE_DIR / "sample_echonet_dynamic" / "FileList.csv",
+        ]
+        
+        found = False
+        for path in possible_filelists:
+            if path.exists():
+                config.FILELIST_PATH = path
+                print(f"Found FileList.csv at: {config.FILELIST_PATH}")
+                found = True
+                break
+        
+        if not found:
+            raise FileNotFoundError(
+                f"FileList.csv not found: {config.FILELIST_PATH}\n"
+                f"Searched in: {[str(p) for p in possible_filelists]}\n"
+                f"Please ensure FileList.csv exists in the data directory."
+            )
     
     # 실험 실행
     results = run_all_experiments(
