@@ -101,19 +101,30 @@ class EFRegressionModel(nn.Module):
         Quantization을 위해 모델을 fuse합니다.
         ResNet-18의 conv-bn-relu를 하나로 결합합니다.
         """
-        # ResNet-18의 기본 블록들을 fuse
-        for module_name, module in self.backbone.named_modules():
-            if isinstance(module, nn.Sequential):
-                # BasicBlock 또는 Bottleneck 구조 확인
-                if len(list(module.children())) >= 2:
-                    try:
+        # backbone만 fuse (skip connection은 그대로 유지)
+        try:
+            torch.quantization.fuse_modules(
+                self.backbone,
+                [['conv1', 'bn1', 'relu']],  # 첫 번째 conv-bn-relu
+                inplace=True
+            )
+        except:
+            pass  # fuse 실패 시 스킵
+        
+        # ResNet의 layer들을 개별적으로 fuse하지 않음 (skip connection 때문에)
+        # 대신 각 layer 내부의 conv-bn-relu만 fuse
+        for name, module in self.backbone.named_modules():
+            if isinstance(module, nn.Sequential) and 'layer' in name:
+                # layer 내부의 첫 번째 conv-bn-relu만 fuse
+                try:
+                    if len(list(module.children())) >= 3:
                         torch.quantization.fuse_modules(
                             module,
                             [['0', '1', '2']],  # conv, bn, relu
                             inplace=True
                         )
-                    except:
-                        pass  # fuse 실패 시 스킵
+                except:
+                    pass
 
 
 def create_model(

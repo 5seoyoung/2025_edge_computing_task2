@@ -62,20 +62,28 @@ def prepare_ptq_model(model: nn.Module) -> nn.Module:
             )
         )
     
-    # 모델의 모든 서브모듈에 qconfig 설정
-    model.qconfig = per_tensor_qconfig
-    # 모든 모듈에 재귀적으로 설정
-    def set_qconfig_recursive(module):
-        for child in module.children():
-            if len(list(child.children())) == 0:  # leaf module
-                if hasattr(child, 'qconfig'):
-                    child.qconfig = per_tensor_qconfig
-            else:
-                set_qconfig_recursive(child)
-        if hasattr(module, 'qconfig'):
-            module.qconfig = per_tensor_qconfig
+    # 모델의 backbone만 quantize (skip connection 문제 방지)
+    # avgpool과 fc는 FP32로 유지
+    if hasattr(model, 'backbone'):
+        model.backbone.qconfig = per_tensor_qconfig
+        # backbone 내부의 모든 모듈에 qconfig 설정
+        def set_qconfig_recursive(module):
+            for child in module.children():
+                if len(list(child.children())) == 0:  # leaf module
+                    if hasattr(child, 'qconfig'):
+                        child.qconfig = per_tensor_qconfig
+                else:
+                    set_qconfig_recursive(child)
+            if hasattr(module, 'qconfig'):
+                module.qconfig = per_tensor_qconfig
+        
+        set_qconfig_recursive(model.backbone)
     
-    set_qconfig_recursive(model)
+    # avgpool과 fc는 quantize하지 않음 (FP32 유지)
+    if hasattr(model, 'avgpool'):
+        model.avgpool.qconfig = None
+    if hasattr(model, 'fc'):
+        model.fc.qconfig = None
     
     # Prepare
     prepared_model = torch.quantization.prepare(model, inplace=False)
@@ -294,20 +302,28 @@ def prepare_qat_model(model: nn.Module) -> nn.Module:
             )
         )
     
-    # 모델의 모든 서브모듈에 qconfig 설정
-    model.qconfig = per_tensor_qat_qconfig
-    # 모든 모듈에 재귀적으로 설정
-    def set_qconfig_recursive(module):
-        for child in module.children():
-            if len(list(child.children())) == 0:  # leaf module
-                if hasattr(child, 'qconfig'):
-                    child.qconfig = per_tensor_qat_qconfig
-            else:
-                set_qconfig_recursive(child)
-        if hasattr(module, 'qconfig'):
-            module.qconfig = per_tensor_qat_qconfig
+    # 모델의 backbone만 quantize (skip connection 문제 방지)
+    # avgpool과 fc는 FP32로 유지
+    if hasattr(model, 'backbone'):
+        model.backbone.qconfig = per_tensor_qat_qconfig
+        # backbone 내부의 모든 모듈에 qconfig 설정
+        def set_qconfig_recursive(module):
+            for child in module.children():
+                if len(list(child.children())) == 0:  # leaf module
+                    if hasattr(child, 'qconfig'):
+                        child.qconfig = per_tensor_qat_qconfig
+                else:
+                    set_qconfig_recursive(child)
+            if hasattr(module, 'qconfig'):
+                module.qconfig = per_tensor_qat_qconfig
+        
+        set_qconfig_recursive(model.backbone)
     
-    set_qconfig_recursive(model)
+    # avgpool과 fc는 quantize하지 않음 (FP32 유지)
+    if hasattr(model, 'avgpool'):
+        model.avgpool.qconfig = None
+    if hasattr(model, 'fc'):
+        model.fc.qconfig = None
     
     # Prepare QAT
     prepared_model = torch.quantization.prepare_qat(model, inplace=False)
