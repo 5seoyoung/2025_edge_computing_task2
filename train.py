@@ -218,6 +218,9 @@ def load_checkpoint(
 ) -> dict:
     """
     체크포인트를 로드합니다.
+    여러 체크포인트 형식을 지원합니다:
+    - {'model_state_dict': ...} 형식
+    - 직접 state_dict만 저장된 형식
     
     Args:
         model: 모델 인스턴스
@@ -228,7 +231,33 @@ def load_checkpoint(
         체크포인트 딕셔너리
     """
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    # 체크포인트 형식에 따라 state_dict 추출
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            # 딕셔너리이지만 model_state_dict가 없는 경우, 전체를 state_dict로 간주
+            # (일부 키가 모델 파라미터인지 확인)
+            if any('weight' in str(k) or 'bias' in str(k) for k in checkpoint.keys()):
+                state_dict = checkpoint
+            else:
+                raise KeyError(
+                    f"Checkpoint does not contain 'model_state_dict' or 'state_dict'. "
+                    f"Available keys: {list(checkpoint.keys())}"
+                )
+    else:
+        # 직접 state_dict가 저장된 경우
+        state_dict = checkpoint
+    
+    model.load_state_dict(state_dict)
     model = model.to(device)
-    return checkpoint
+    
+    # 반환값을 딕셔너리로 통일
+    if isinstance(checkpoint, dict):
+        return checkpoint
+    else:
+        return {'model_state_dict': state_dict}
 
