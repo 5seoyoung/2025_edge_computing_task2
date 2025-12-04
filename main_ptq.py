@@ -6,6 +6,7 @@ PTQ 실험을 실행하고 결과를 저장합니다.
 import torch
 import json
 import pandas as pd
+import argparse
 from pathlib import Path
 import config
 from model import create_model
@@ -180,12 +181,53 @@ def run_ptq_experiment(
 
 
 if __name__ == "__main__":
-    # TODO: Colab에서 실행 시 baseline_checkpoint_path를 수정하세요
-    baseline_checkpoint = config.CHECKPOINT_DIR / "best_model.pth"
+    parser = argparse.ArgumentParser(description="Run PTQ experiment")
+    parser.add_argument(
+        "--data_root",
+        type=str,
+        default=None,
+        help="Path to data directory"
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help="Path to baseline checkpoint (default: checkpoints/best_model.pth)"
+    )
+    parser.add_argument(
+        "--checkpoint_dir",
+        type=str,
+        default=None,
+        help="Directory containing checkpoints"
+    )
+    parser.add_argument(
+        "--results_dir",
+        type=str,
+        default=None,
+        help="Directory to save results"
+    )
+    parser.add_argument("--quiet", action="store_true", help="Reduce verbosity")
+    
+    args = parser.parse_args()
+    
+    # 경로 설정
+    if args.data_root:
+        config.BASE_DIR = Path(args.data_root)
+        config.VIDEO_DIR = config.BASE_DIR / "Videos"
+        config.FILELIST_PATH = config.BASE_DIR / "FileList.csv"
+    
+    if args.checkpoint_dir:
+        config.CHECKPOINT_DIR = Path(args.checkpoint_dir)
+    
+    if args.results_dir:
+        config.RESULTS_DIR = Path(args.results_dir)
+        config.RESULTS_DIR.mkdir(exist_ok=True, parents=True)
+    
+    baseline_checkpoint = Path(args.checkpoint_path) if args.checkpoint_path else config.CHECKPOINT_DIR / "best_model.pth"
     
     results = run_ptq_experiment(
         baseline_checkpoint_path=baseline_checkpoint,
         save_results=True,
-        verbose=True,
+        verbose=not args.quiet,
     )
 
