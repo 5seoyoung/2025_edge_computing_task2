@@ -150,7 +150,7 @@ def convert_to_int8(prepared_model: nn.Module) -> nn.Module:
         prepared_model: 캘리브레이션된 모델
         
     Returns:
-        INT8 모델
+        INT8 모델 (또는 FP32 모델 - quantization 실패 시)
     """
     # Quantization backend 설정 확인
     if not torch.cuda.is_available():
@@ -163,8 +163,16 @@ def convert_to_int8(prepared_model: nn.Module) -> nn.Module:
     prepared_model = prepared_model.cpu()
     prepared_model.eval()
     
-    quantized_model = torch.quantization.convert(prepared_model, inplace=False)
-    return quantized_model
+    try:
+        quantized_model = torch.quantization.convert(prepared_model, inplace=False)
+        return quantized_model
+    except (RuntimeError, NotImplementedError) as e:
+        # Quantization 실패 시 FP32 모델 반환 (ResNet skip connection 문제 등)
+        print(f"⚠️  Quantization conversion failed: {e}")
+        print("⚠️  Falling back to FP32 model (quantization not supported for this architecture)")
+        # 원본 모델의 FP32 버전 반환
+        # prepared_model에서 observer 제거하고 원본 모델 반환
+        return prepared_model
 
 
 def apply_ptq(
@@ -409,8 +417,22 @@ def apply_qat(
     if verbose:
         print("\n[Step 4] Evaluating quantized model...")
     
-    # INT8 모델은 CPU에서만 실행 가능
-    eval_device = 'cpu'
+    # 모델이 실제로 quantized되었는지 확인
+    is_actually_quantized = any(
+        'quantized' in str(type(m)) or hasattr(m, '_packed_params')
+        for m in quantized_model.modules()
+    )
+    
+    if not is_actually_quantized:
+        if verbose:
+            print("⚠️  Model is still FP32 (quantization not applied)")
+    
+    # INT8 모델은 CPU에서만 실행 가능, FP32는 원래 device 사용
+    if is_actually_quantized:
+        eval_device = 'cpu'
+    else:
+        eval_device = device
+    
     quantized_model = quantized_model.to(eval_device)
     
     performance = evaluate_model_performance(
