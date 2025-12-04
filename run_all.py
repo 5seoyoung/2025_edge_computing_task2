@@ -1,15 +1,20 @@
 """
 Run all experiments: Baseline → PTQ → QAT
 전체 실험을 순차적으로 실행하고 최종 비교 결과를 생성합니다.
+
+서버에서 실행 예시:
+    python run_all.py --data_root /path/to/echonet --train_baseline
+    python run_all.py --data_root /path/to/echonet --no-train_baseline  # 기존 모델 사용
 """
 
 import torch
 import json
 import pandas as pd
+import argparse
 from pathlib import Path
 import config
 from model import create_model
-from dataset import get_dataloaders
+from dataset import get_dataloaders, create_data_loaders
 from train import train_model, load_checkpoint
 from main_ptq import run_ptq_experiment
 from main_qat import run_qat_experiment
@@ -50,13 +55,14 @@ def run_all_experiments(
     if verbose:
         print("\n[Step 1] Loading dataset...")
     
-    train_loader, val_loader = get_dataloaders(
+    # create_data_loaders 사용 (train/val/test 모두 반환)
+    train_loader, val_loader, test_loader = create_data_loaders(
         video_dir=config.VIDEO_DIR,
         filelist_path=config.FILELIST_PATH,
+        num_frames=config.NUM_FRAMES,
+        image_size=config.IMG_SIZE,
         batch_size=config.BATCH_SIZE,
         num_workers=config.NUM_WORKERS,
-        num_frames=config.NUM_FRAMES,
-        img_size=config.IMG_SIZE,
     )
     
     # 2. Baseline 모델 학습 또는 로드
@@ -220,10 +226,103 @@ def run_all_experiments(
 
 
 if __name__ == "__main__":
-    # TODO: Colab에서 실행 시 train_baseline을 False로 설정하여 기존 모델 사용 가능
-    results = run_all_experiments(
-        train_baseline=True,
-        save_results=True,
-        verbose=True,
+    parser = argparse.ArgumentParser(
+        description="Run full quantization comparison experiment (Baseline → PTQ → QAT)"
     )
+    parser.add_argument(
+        "--data_root",
+        type=str,
+        default=None,
+        help="Path to data directory (should contain Videos/ and FileList.csv). "
+             "If not provided, uses config.BASE_DIR"
+    )
+    parser.add_argument(
+        "--train_baseline",
+        action="store_true",
+        default=False,
+        help="Train baseline model from scratch (default: use existing checkpoint if available)"
+    )
+    parser.add_argument(
+        "--no-train_baseline",
+        dest="train_baseline",
+        action="store_false",
+        help="Skip baseline training, use existing checkpoint"
+    )
+    parser.add_argument(
+        "--checkpoint_dir",
+        type=str,
+        default=None,
+        help="Directory to save/load checkpoints (default: ./checkpoints)"
+    )
+    parser.add_argument(
+        "--results_dir",
+        type=str,
+        default=None,
+        help="Directory to save results (default: ./results)"
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=None,
+        help=f"Batch size (default: {config.BATCH_SIZE})"
+    )
+    parser.add_argument(
+        "--num_epochs",
+        type=int,
+        default=None,
+        help=f"Number of epochs for baseline training (default: {config.NUM_EPOCHS})"
+    )
+    parser.add_argument(
+        "--qat_epochs",
+        type=int,
+        default=None,
+        help=f"Number of epochs for QAT fine-tuning (default: {config.QAT_EPOCHS})"
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Reduce output verbosity"
+    )
+    
+    args = parser.parse_args()
+    
+    # 경로 설정 업데이트
+    if args.data_root:
+        config.BASE_DIR = Path(args.data_root)
+        config.VIDEO_DIR = config.BASE_DIR / "Videos"
+        config.FILELIST_PATH = config.BASE_DIR / "FileList.csv"
+        print(f"Using data from: {config.BASE_DIR}")
+    
+    if args.checkpoint_dir:
+        config.CHECKPOINT_DIR = Path(args.checkpoint_dir)
+        config.CHECKPOINT_DIR.mkdir(exist_ok=True, parents=True)
+    
+    if args.results_dir:
+        config.RESULTS_DIR = Path(args.results_dir)
+        config.RESULTS_DIR.mkdir(exist_ok=True, parents=True)
+    
+    # 하이퍼파라미터 업데이트
+    if args.batch_size:
+        config.BATCH_SIZE = args.batch_size
+    
+    if args.num_epochs:
+        config.NUM_EPOCHS = args.num_epochs
+    
+    if args.qat_epochs:
+        config.QAT_EPOCHS = args.qat_epochs
+    
+    # 데이터 경로 확인
+    if not config.VIDEO_DIR.exists():
+        raise FileNotFoundError(f"Video directory not found: {config.VIDEO_DIR}")
+    if not config.FILELIST_PATH.exists():
+        raise FileNotFoundError(f"FileList.csv not found: {config.FILELIST_PATH}")
+    
+    # 실험 실행
+    results = run_all_experiments(
+        train_baseline=args.train_baseline,
+        save_results=True,
+        verbose=not args.quiet,
+    )
+    
+    print("\n✅ All experiments completed successfully!")
 
