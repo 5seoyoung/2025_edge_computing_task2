@@ -33,8 +33,26 @@ def prepare_ptq_model(model: nn.Module) -> nn.Module:
         model.fuse_model()
     
     # Quantization 설정
-    model.qconfig = torch.quantization.get_default_qconfig('fbgemm')  # CPU용
-    # GPU 사용 시: torch.quantization.get_default_qconfig('qnnpack')
+    # per_tensor qscheme 사용 (per_channel은 일부 환경에서 지원되지 않을 수 있음)
+    try:
+        # per_tensor qscheme을 사용하는 커스텀 qconfig 생성
+        qconfig = torch.quantization.QConfig(
+            activation=torch.quantization.MinMaxObserver.with_args(
+                dtype=torch.quint8,
+                qscheme=torch.per_tensor_affine
+            ),
+            weight=torch.quantization.MinMaxObserver.with_args(
+                dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric
+            )
+        )
+        model.qconfig = qconfig
+    except Exception:
+        # 기본 qconfig 사용 (fallback)
+        try:
+            model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+        except Exception:
+            model.qconfig = torch.quantization.get_default_qconfig('qnnpack')
     
     # Prepare
     prepared_model = torch.quantization.prepare(model, inplace=False)
@@ -203,7 +221,32 @@ def prepare_qat_model(model: nn.Module) -> nn.Module:
         model.fuse_model()
     
     # Quantization 설정
-    model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+    # per_tensor qscheme 사용 (per_channel은 일부 환경에서 지원되지 않을 수 있음)
+    try:
+        # per_tensor qscheme을 사용하는 커스텀 qat qconfig 생성
+        qconfig = torch.quantization.QConfig(
+            activation=torch.quantization.FakeQuantize.with_args(
+                observer=torch.quantization.MovingAverageMinMaxObserver,
+                quant_min=0,
+                quant_max=255,
+                dtype=torch.quint8,
+                qscheme=torch.per_tensor_affine
+            ),
+            weight=torch.quantization.FakeQuantize.with_args(
+                observer=torch.quantization.MovingAverageMinMaxObserver,
+                quant_min=-128,
+                quant_max=127,
+                dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric
+            )
+        )
+        model.qconfig = qconfig
+    except Exception:
+        # 기본 qat qconfig 사용 (fallback)
+        try:
+            model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+        except Exception:
+            model.qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
     
     # Prepare QAT
     prepared_model = torch.quantization.prepare_qat(model, inplace=False)
