@@ -434,12 +434,19 @@ def apply_qat(
     criterion = nn.MSELoss()
     optimizer = optim.Adam(prepared_model.parameters(), lr=learning_rate)
     
+    # QAT 학습 히스토리 추적
+    qat_history = {
+        'train_loss': [],
+        'val_loss': [],
+        'val_mae': [],
+    }
+    
     for epoch in range(num_epochs):
         if verbose:
             print(f"\nQAT Epoch {epoch+1}/{num_epochs}")
         
         # Train
-        train_one_epoch(
+        train_loss = train_one_epoch(
             prepared_model,
             train_loader,
             criterion,
@@ -447,10 +454,17 @@ def apply_qat(
             device,
             verbose,
         )
+        qat_history['train_loss'].append(train_loss)
         
         # Evaluate (optional, for monitoring)
         if verbose:
-            evaluate(prepared_model, val_loader, criterion, device, verbose=False)
+            val_loss, val_mae = evaluate(prepared_model, val_loader, criterion, device, verbose=False)
+            qat_history['val_loss'].append(val_loss)
+            qat_history['val_mae'].append(val_mae)
+        else:
+            val_loss, val_mae = evaluate(prepared_model, val_loader, criterion, device, verbose=False)
+            qat_history['val_loss'].append(val_loss)
+            qat_history['val_mae'].append(val_mae)
     
     # 3. Convert to INT8
     if verbose:
@@ -521,6 +535,9 @@ def apply_qat(
         print(f"  MAE: {performance['mae']:.4f}")
         print(f"  Size: {performance['size_mb']:.4f} MB")
         print(f"  Latency: {performance['latency_ms']:.4f} ms/video")
+    
+    # QAT 히스토리를 performance에 추가
+    performance['qat_history'] = qat_history
     
     return quantized_model, performance
 

@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+import torch
 import config
 
 # 폰트 설정 (한글 지원)
@@ -316,15 +317,144 @@ def create_improvement_chart(results: dict, save_path: Path = None):
     plt.close()
 
 
-def create_all_visualizations(results_dir: Path = None):
+def load_training_history(checkpoint_dir: Path = config.CHECKPOINT_DIR):
+    """
+    체크포인트에서 학습 히스토리를 로드합니다.
+    
+    Args:
+        checkpoint_dir: 체크포인트 디렉토리
+        
+    Returns:
+        baseline_history: Baseline 학습 히스토리 (없으면 None)
+    """
+    checkpoint_dir = Path(checkpoint_dir)
+    final_checkpoint = checkpoint_dir / "final_model.pth"
+    
+    if not final_checkpoint.exists():
+        return None
+    
+    try:
+        checkpoint = torch.load(final_checkpoint, map_location='cpu')
+        if 'history' in checkpoint:
+            return checkpoint['history']
+    except Exception as e:
+        print(f"⚠️  Could not load training history: {e}")
+    
+    return None
+
+
+def create_training_history_chart(history: dict, save_path: Path = None):
+    """
+    Baseline 학습 히스토리 시각화
+    
+    Args:
+        history: 학습 히스토리 딕셔너리 {'train_loss': [], 'val_loss': [], 'val_mae': []}
+        save_path: 저장 경로
+    """
+    if save_path is None:
+        save_path = config.RESULTS_DIR / "training_history.png"
+    
+    if history is None or len(history.get('train_loss', [])) == 0:
+        print("⚠️  No training history available")
+        return
+    
+    epochs = range(1, len(history['train_loss']) + 1)
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Loss 그래프
+    axes[0].plot(epochs, history['train_loss'], 'b-', label='Train Loss', linewidth=2, marker='o', markersize=4)
+    axes[0].plot(epochs, history['val_loss'], 'r-', label='Validation Loss', linewidth=2, marker='s', markersize=4)
+    axes[0].set_xlabel('Epoch', fontsize=12)
+    axes[0].set_ylabel('Loss (MSE)', fontsize=12)
+    axes[0].set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
+    axes[0].legend(fontsize=11)
+    axes[0].grid(True, alpha=0.3)
+    axes[0].set_xticks(epochs[::max(1, len(epochs)//10)])  # 최대 10개 tick만 표시
+    
+    # MAE 그래프
+    axes[1].plot(epochs, history['val_mae'], 'g-', label='Validation MAE', linewidth=2, marker='^', markersize=4)
+    axes[1].set_xlabel('Epoch', fontsize=12)
+    axes[1].set_ylabel('MAE', fontsize=12)
+    axes[1].set_title('Validation MAE', fontsize=14, fontweight='bold')
+    axes[1].legend(fontsize=11)
+    axes[1].grid(True, alpha=0.3)
+    axes[1].set_xticks(epochs[::max(1, len(epochs)//10)])
+    
+    # Best epoch 표시
+    best_epoch = min(range(len(history['val_mae'])), key=lambda i: history['val_mae'][i])
+    best_mae = history['val_mae'][best_epoch]
+    axes[1].axvline(x=best_epoch+1, color='red', linestyle='--', alpha=0.5, label=f'Best (Epoch {best_epoch+1})')
+    axes[1].plot(best_epoch+1, best_mae, 'ro', markersize=10, label=f'Best MAE: {best_mae:.2f}')
+    axes[1].legend(fontsize=11)
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"✅ Training history chart saved to: {save_path}")
+    plt.close()
+
+
+def create_qat_training_chart(qat_history: dict, save_path: Path = None):
+    """
+    QAT fine-tuning 과정의 loss 시각화
+    
+    Args:
+        qat_history: QAT 학습 히스토리 {'train_loss': [], 'val_loss': [], 'val_mae': []}
+        save_path: 저장 경로
+    """
+    if save_path is None:
+        save_path = config.RESULTS_DIR / "qat_training_history.png"
+    
+    if not qat_history or len(qat_history.get('train_loss', [])) == 0:
+        print("⚠️  No QAT training history available")
+        return
+    
+    epochs = range(1, len(qat_history['train_loss']) + 1)
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Loss 그래프
+    axes[0].plot(epochs, qat_history['train_loss'], 'b-', label='Train Loss', linewidth=2, marker='o', markersize=6)
+    if qat_history.get('val_loss'):
+        axes[0].plot(epochs, qat_history['val_loss'], 'r-', label='Validation Loss', linewidth=2, marker='s', markersize=6)
+    axes[0].set_xlabel('Epoch', fontsize=12)
+    axes[0].set_ylabel('Loss (MSE)', fontsize=12)
+    axes[0].set_title('QAT Training and Validation Loss', fontsize=14, fontweight='bold')
+    axes[0].legend(fontsize=11)
+    axes[0].grid(True, alpha=0.3)
+    axes[0].set_xticks(epochs)
+    
+    # MAE 그래프
+    if qat_history.get('val_mae'):
+        axes[1].plot(epochs, qat_history['val_mae'], 'g-', label='Validation MAE', linewidth=2, marker='^', markersize=6)
+        axes[1].set_xlabel('Epoch', fontsize=12)
+        axes[1].set_ylabel('MAE', fontsize=12)
+        axes[1].set_title('QAT Validation MAE', fontsize=14, fontweight='bold')
+        axes[1].legend(fontsize=11)
+        axes[1].grid(True, alpha=0.3)
+        axes[1].set_xticks(epochs)
+    else:
+        axes[1].axis('off')
+        axes[1].text(0.5, 0.5, 'No validation MAE data', ha='center', va='center', transform=axes[1].transAxes)
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"✅ QAT training chart saved to: {save_path}")
+    plt.close()
+
+
+def create_all_visualizations(results_dir: Path = None, checkpoint_dir: Path = None):
     """
     모든 시각화 자료 생성
     
     Args:
         results_dir: 결과 디렉토리 (None이면 config.RESULTS_DIR 사용)
+        checkpoint_dir: 체크포인트 디렉토리 (None이면 config.CHECKPOINT_DIR 사용)
     """
     if results_dir is None:
         results_dir = config.RESULTS_DIR
+    if checkpoint_dir is None:
+        checkpoint_dir = config.CHECKPOINT_DIR
     
     results_dir = Path(results_dir)
     results_dir.mkdir(exist_ok=True, parents=True)
@@ -353,6 +483,22 @@ def create_all_visualizations(results_dir: Path = None):
     
     print("\n[4] Creating improvement chart...")
     create_improvement_chart(results, results_dir / "improvement_chart.png")
+    
+    # 학습 히스토리 시각화
+    print("\n[5] Creating training history chart...")
+    baseline_history = load_training_history(checkpoint_dir)
+    if baseline_history:
+        create_training_history_chart(baseline_history, results_dir / "training_history.png")
+    else:
+        print("⚠️  Baseline training history not found (checkpoint may not contain history)")
+    
+    # QAT 학습 히스토리 시각화
+    print("\n[6] Creating QAT training history chart...")
+    qat_history = results.get('qat', {}).get('qat_history')
+    if qat_history:
+        create_qat_training_chart(qat_history, results_dir / "qat_training_history.png")
+    else:
+        print("⚠️  QAT training history not found in results")
     
     print("\n" + "="*60)
     print("✅ All visualizations generated successfully!")
