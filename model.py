@@ -33,7 +33,16 @@ class EFRegressionModel(nn.Module):
         self.feature_dim = feature_dim
         
         # ResNet-18 backbone (마지막 FC 제거)
-        resnet = models.resnet18(pretrained=pretrained)
+        # torchvision 0.13+에서는 weights 파라미터 사용
+        if pretrained:
+            try:
+                # 최신 torchvision (0.13+)
+                resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            except (AttributeError, TypeError):
+                # 구버전 torchvision
+                resnet = models.resnet18(pretrained=True)
+        else:
+            resnet = models.resnet18(weights=None)
         # 마지막 FC와 avgpool 제거
         self.backbone = nn.Sequential(*list(resnet.children())[:-2])
         # ResNet-18의 마지막 conv layer 출력 크기: 512
