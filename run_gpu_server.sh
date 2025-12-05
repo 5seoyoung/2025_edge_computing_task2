@@ -1,8 +1,12 @@
 #!/bin/bash
 # GPU 서버에서 실험 실행 스크립트
 
+# 프로젝트 디렉토리로 이동 (스크립트가 있는 디렉토리)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # 데이터 경로 (서버의 실제 경로로 수정하세요)
-DATA_ROOT="/home/work/edgetask2/data/echonet_dynamic"
+DATA_ROOT="/path/to/echonet_dynamic"
 
 # 결과 저장 경로
 RESULTS_DIR="./results"
