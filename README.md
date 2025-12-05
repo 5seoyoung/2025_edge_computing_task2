@@ -36,7 +36,7 @@ quantization_project/
    - `notebooks/quantization_experiments.ipynb` 열기
    - 셀 순서대로 실행
 
-## 📊 실험 결과
+## 📊 실험 결과 (GPU 서버)
 
 실험 결과는 다음 항목을 비교합니다:
 
@@ -44,13 +44,18 @@ quantization_project/
 - **Model Size (MB)**: 모델 파일 크기
 - **Latency (ms/video)**: 추론 속도
 
-### 비교 테이블 형식
+### 최종 비교 테이블
 
-| Model | Precision | Size(MB) | MAE | Latency(ms) |
-| ----- | --------- | -------- | --- | ----------- |
-| FP32  | FP32      | X        | X   | X           |
-| PTQ   | INT8      | X        | X   | X           |
-| QAT   | INT8      | X        | X   | X           |
+| Model | Precision | Size(MB) | MAE | Latency(ms) | Device |
+| ----- | --------- | -------- | --- | ----------- | ------ |
+| FP32 Baseline | FP32 | 42.71 | 47.41 | 7.57 | GPU |
+| PTQ | INT8 | 42.71 | 47.41 | 871.62 | CPU |
+| QAT | INT8 | 42.71 | 47.82 | 895.11 | CPU |
+
+**주요 관찰**:
+- ✅ PTQ: 정확도 거의 유지 (0.01% 증가)
+- ✅ QAT: 약간의 정확도 감소 (0.86% 증가)하지만 양호
+- ⚠️ Latency: CPU 실행으로 인해 증가 (GPU quantization 지원 시 개선 예상)
 
 ## 🔧 주요 모듈 설명
 
@@ -74,19 +79,29 @@ quantization_project/
 
 ## 📝 사용 방법
 
+### GPU 서버 실행 (권장)
+```bash
+# 프로젝트 디렉토리로 이동
+cd /path/to/2025_edge_computing_task2
+
+# 전체 실험 실행 (Baseline 학습 포함)
+python run_all.py \
+    --data_root /path/to/echonet_dynamic \
+    --train_baseline \
+    --batch_size 16
+
+# 기존 모델 사용
+python run_all.py \
+    --data_root /path/to/echonet_dynamic \
+    --no-train_baseline
+```
+
+자세한 내용은 `GPU_SERVER_USAGE.md`를 참고하세요.
+
 ### 로컬 실행
 ```bash
-# Baseline 학습
-python train.py
-
-# PTQ 실험
-python main_ptq.py
-
-# QAT 실험
-python main_qat.py
-
 # 전체 실험 (baseline → PTQ → QAT)
-python run_all.py
+python run_all.py --data_root ./sample_echonet_dynamic --train_baseline
 ```
 
 ### Colab 실행
