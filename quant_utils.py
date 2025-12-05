@@ -12,6 +12,7 @@ from typing import Tuple
 import config
 from metrics import evaluate_model_performance
 from train import train_one_epoch, evaluate
+from model import create_model
 import torch.optim as optim
 
 
@@ -601,6 +602,8 @@ def apply_qat(
         )
         if not is_quantized:
             raise RuntimeError("Model was not actually quantized")
+        if verbose:
+            print("✅ Static quantization successful!")
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
             print(f"⚠️  Static quantization conversion failed: {e}")
@@ -608,12 +611,33 @@ def apply_qat(
         
         # Dynamic Quantization 시도 (QAT fine-tuning된 모델 사용)
         try:
+            # QAT prepared_model은 FakeQuantize를 포함하므로,
+            # 원본 모델 구조로 복원한 후 fine-tuning된 weights를 로드해야 함
+            if verbose:
+                print("⚠️  Converting QAT prepared model to standard model for Dynamic Quantization...")
+            
+            # Fine-tuning된 weights를 원본 모델에 로드
+            fine_tuned_model = create_model()
+            # prepared_model의 state_dict를 로드 (FakeQuantize 관련 키는 무시)
+            fine_tuned_state = {}
+            prepared_state = prepared_model.state_dict()
+            for key, value in prepared_state.items():
+                # FakeQuantize 관련 키 제외
+                if 'activation_post_process' not in key and 'weight_fake_quant' not in key:
+                    if key in fine_tuned_model.state_dict():
+                        fine_tuned_state[key] = value
+            fine_tuned_model.load_state_dict(fine_tuned_state, strict=False)
+            fine_tuned_model = fine_tuned_model.cpu()
+            fine_tuned_model.eval()
+            
             # Fine-tuning된 모델을 Dynamic quantization
             quantized_model, performance = apply_dynamic_quantization_simple(
-                prepared_model, val_loader, device, verbose
+                fine_tuned_model, val_loader, device, verbose
             )
             # QAT 히스토리를 performance에 추가
             performance['qat_history'] = qat_history
+            if verbose:
+                print("✅ QAT with Dynamic Quantization successful!")
             return quantized_model, performance
         except Exception as e2:
             if verbose:
@@ -645,7 +669,7 @@ def apply_qat(
     
     quantized_model = quantized_model.to(eval_device)
     
-    # 평가 시도 (오류 발생 시 원본 모델로 fallback)
+    # 평가 시도 (오류 발생 시 Dynamic Quantization으로 fallback)
     try:
         performance = evaluate_model_performance(
             quantized_model,
@@ -657,19 +681,47 @@ def apply_qat(
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
             print(f"⚠️  Quantized model evaluation failed: {e}")
-            print("⚠️  Falling back to FP32 model evaluation")
-        # 원본 FP32 모델로 평가
-        original_model = model.to(device)
-        original_model.eval()
-        performance = evaluate_model_performance(
-            original_model,
-            val_loader,
-            criterion,
-            device=device,
-            verbose=verbose,
-        )
-        # Quantized 모델도 원본으로 교체
-        quantized_model = original_model
+            print("⚠️  Trying Dynamic Quantization as fallback...")
+        
+        # Dynamic Quantization 시도 (QAT fine-tuning된 모델 사용)
+        try:
+            # QAT prepared_model은 FakeQuantize를 포함하므로, 
+            # 원본 모델 구조로 복원한 후 fine-tuning된 weights를 로드해야 함
+            if verbose:
+                print("⚠️  Converting QAT prepared model to standard model for Dynamic Quantization...")
+            
+            # Fine-tuning된 weights를 원본 모델에 로드
+            # prepared_model에서 실제 weights 추출
+            fine_tuned_model = create_model()
+            fine_tuned_model.load_state_dict(prepared_model.state_dict(), strict=False)
+            fine_tuned_model = fine_tuned_model.cpu()
+            fine_tuned_model.eval()
+            
+            # Fine-tuning된 모델을 Dynamic quantization
+            quantized_model, performance = apply_dynamic_quantization_simple(
+                fine_tuned_model, val_loader, device, verbose
+            )
+            # QAT 히스토리를 performance에 추가
+            performance['qat_history'] = qat_history
+            if verbose:
+                print("✅ QAT with Dynamic Quantization successful!")
+            return quantized_model, performance
+        except Exception as e2:
+            if verbose:
+                print(f"⚠️  Dynamic quantization also failed: {e2}")
+                print("⚠️  Falling back to FP32 model evaluation")
+            # 원본 FP32 모델로 평가
+            original_model = model.to(device)
+            original_model.eval()
+            performance = evaluate_model_performance(
+                original_model,
+                val_loader,
+                criterion,
+                device=device,
+                verbose=verbose,
+            )
+            # Quantized 모델도 원본으로 교체
+            quantized_model = original_model
     
     if verbose:
         print("\nQAT completed!")
