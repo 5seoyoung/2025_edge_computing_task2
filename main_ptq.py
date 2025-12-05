@@ -101,11 +101,11 @@ def run_ptq_experiment(
             model, val_loader, device, verbose
         )
         if verbose:
-            print("✅ Dynamic Quantization successful!")
+            print("Dynamic Quantization successful!")
     except Exception as e:
         if verbose:
-            print(f"⚠️  Dynamic Quantization failed: {e}")
-            print("⚠️  Trying Static PTQ as fallback...")
+            print(f"Dynamic Quantization failed: {e}")
+            print("Trying Static PTQ as fallback...")
         
         # Static PTQ 시도
         try:
@@ -118,8 +118,8 @@ def run_ptq_experiment(
             )
         except Exception as e2:
             if verbose:
-                print(f"⚠️  Static PTQ also failed: {e2}")
-                print("⚠️  Using FP32 model as final fallback...")
+                print(f"Static PTQ also failed: {e2}")
+                print("Using FP32 model as final fallback...")
             # FP32 모델로 평가
             criterion = nn.MSELoss()
             ptq_performance = evaluate_model_performance(

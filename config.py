@@ -7,10 +7,8 @@ import os
 from pathlib import Path
 
 # ==================== 경로 설정 ====================
-# 로컬 실행 시: 프로젝트 루트 기준 상대 경로
-# Colab 실행 시: 절대 경로 사용 (예: /content/sample_echonet)
 _script_dir = Path(__file__).parent.absolute()
-BASE_DIR = _script_dir / "sample_echonet_dynamic"  # 로컬 기본 경로
+BASE_DIR = _script_dir / "sample_echonet_dynamic"
 VIDEO_DIR = BASE_DIR / "Videos"
 FILELIST_PATH = BASE_DIR / "FileList.csv"
 
@@ -24,7 +22,7 @@ CHECKPOINT_DIR.mkdir(exist_ok=True, parents=True)
 NUM_FRAMES = 8  # 샘플링할 프레임 수
 IMG_SIZE = 112  # 이미지 크기 (112x112 또는 128x128)
 BATCH_SIZE = 8
-NUM_WORKERS = 2  # Colab에서는 0 또는 2 권장
+NUM_WORKERS = 2
 
 # Train/Val split
 TRAIN_RATIO = 0.8

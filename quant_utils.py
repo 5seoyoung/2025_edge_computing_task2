@@ -198,10 +198,10 @@ def apply_dynamic_quantization_simple(
     try:
         torch.backends.quantized.engine = 'qnnpack'
         if verbose:
-            print(f"✅ Set quantization backend to: {torch.backends.quantized.engine}")
+            print(f"Set quantization backend to: {torch.backends.quantized.engine}")
     except Exception as e:
         if verbose:
-            print(f"⚠️  Could not set backend: {e}")
+            print(f"Could not set backend: {e}")
     
     model = model.cpu()
     model.eval()
@@ -220,7 +220,7 @@ def apply_dynamic_quantization_simple(
                 1 for m in quantized_model.modules() 
                 if hasattr(m, '_packed_params') or 'quantized' in str(type(m))
             )
-            print(f"✅ Quantized {quantized_count} Linear module(s)")
+            print(f"Quantized {quantized_count} Linear module(s)")
         
         criterion = nn.MSELoss()
         performance = evaluate_model_performance(
@@ -232,13 +232,13 @@ def apply_dynamic_quantization_simple(
         )
         
         if verbose:
-            print("✅ Dynamic Quantization successful!")
+            print("Dynamic Quantization successful!")
         
         return quantized_model, performance
     except Exception as e:
         if verbose:
-            print(f"⚠️  Dynamic quantization failed: {e}")
-            print("⚠️  Trying individual layer quantization...")
+            print(f"Dynamic quantization failed: {e}")
+            print("Trying individual layer quantization...")
         
         # 대안: 각 Linear 레이어를 개별적으로 quantize
         quantized_model = model
@@ -264,7 +264,7 @@ def apply_dynamic_quantization_simple(
         
         if linear_count > 0:
             if verbose:
-                print(f"✅ Quantized {linear_count} Linear layer(s) individually")
+                print(f"Quantized {linear_count} Linear layer(s) individually")
             
             criterion = nn.MSELoss()
             performance = evaluate_model_performance(
@@ -344,8 +344,8 @@ def apply_ptq(
             raise RuntimeError("Model was not actually quantized")
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
-            print(f"⚠️  Static quantization conversion failed: {e}")
-            print("⚠️  Trying Dynamic Quantization as fallback...")
+            print(f"Static quantization conversion failed: {e}")
+            print("Trying Dynamic Quantization as fallback...")
         
         # Dynamic Quantization 시도
         try:
@@ -355,8 +355,8 @@ def apply_ptq(
             return quantized_model, performance
         except Exception as e2:
             if verbose:
-                print(f"⚠️  Dynamic quantization also failed: {e2}")
-                print("⚠️  Using FP32 model instead")
+                print(f"Dynamic quantization also failed: {e2}")
+                print("Using FP32 model instead")
             # 원본 모델 사용
             quantized_model = model.cpu()
             quantized_model.eval()
@@ -373,7 +373,7 @@ def apply_ptq(
     
     if not is_actually_quantized:
         if verbose:
-            print("⚠️  Model is still FP32 (quantization not applied)")
+            print("Model is still FP32 (quantization not applied)")
     
     # INT8 모델은 CPU에서만 실행 가능, FP32는 원래 device 사용
     if is_actually_quantized:
@@ -396,8 +396,8 @@ def apply_ptq(
         )
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
-            print(f"⚠️  Quantized model evaluation failed: {e}")
-            print("⚠️  Falling back to FP32 model evaluation")
+            print(f"Quantized model evaluation failed: {e}")
+            print("Falling back to FP32 model evaluation")
         # 원본 FP32 모델로 평가
         original_model = model.to(device)
         original_model.eval()
@@ -603,18 +603,18 @@ def apply_qat(
         if not is_quantized:
             raise RuntimeError("Model was not actually quantized")
         if verbose:
-            print("✅ Static quantization successful!")
+            print("Static quantization successful!")
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
-            print(f"⚠️  Static quantization conversion failed: {e}")
-            print("⚠️  Trying Dynamic Quantization as fallback...")
+            print(f"Static quantization conversion failed: {e}")
+            print("Trying Dynamic Quantization as fallback...")
         
         # Dynamic Quantization 시도 (QAT fine-tuning된 모델 사용)
         try:
             # QAT prepared_model은 FakeQuantize를 포함하므로,
             # 원본 모델 구조로 복원한 후 fine-tuning된 weights를 로드해야 함
             if verbose:
-                print("⚠️  Converting QAT prepared model to standard model for Dynamic Quantization...")
+                print("Converting QAT prepared model to standard model for Dynamic Quantization...")
             
             # Fine-tuning된 weights를 원본 모델에 로드
             fine_tuned_model = create_model()
@@ -637,12 +637,12 @@ def apply_qat(
             # QAT 히스토리를 performance에 추가
             performance['qat_history'] = qat_history
             if verbose:
-                print("✅ QAT with Dynamic Quantization successful!")
+                print("QAT with Dynamic Quantization successful!")
             return quantized_model, performance
         except Exception as e2:
             if verbose:
-                print(f"⚠️  Dynamic quantization also failed: {e2}")
-                print("⚠️  Using FP32 model instead")
+                print(f"Dynamic quantization also failed: {e2}")
+                print("Using FP32 model instead")
             # 원본 모델 사용
             quantized_model = model.cpu()
             quantized_model.eval()
@@ -659,7 +659,7 @@ def apply_qat(
     
     if not is_actually_quantized:
         if verbose:
-            print("⚠️  Model is still FP32 (quantization not applied)")
+            print("Model is still FP32 (quantization not applied)")
     
     # INT8 모델은 CPU에서만 실행 가능, FP32는 원래 device 사용
     if is_actually_quantized:
@@ -680,15 +680,15 @@ def apply_qat(
         )
     except (RuntimeError, NotImplementedError) as e:
         if verbose:
-            print(f"⚠️  Quantized model evaluation failed: {e}")
-            print("⚠️  Trying Dynamic Quantization as fallback...")
+            print(f"Quantized model evaluation failed: {e}")
+            print("Trying Dynamic Quantization as fallback...")
         
         # Dynamic Quantization 시도 (QAT fine-tuning된 모델 사용)
         try:
             # QAT prepared_model은 FakeQuantize를 포함하므로, 
             # 원본 모델 구조로 복원한 후 fine-tuning된 weights를 로드해야 함
             if verbose:
-                print("⚠️  Converting QAT prepared model to standard model for Dynamic Quantization...")
+                print("Converting QAT prepared model to standard model for Dynamic Quantization...")
             
             # Fine-tuning된 weights를 원본 모델에 로드
             # prepared_model에서 실제 weights 추출
@@ -704,12 +704,12 @@ def apply_qat(
             # QAT 히스토리를 performance에 추가
             performance['qat_history'] = qat_history
             if verbose:
-                print("✅ QAT with Dynamic Quantization successful!")
+                print("QAT with Dynamic Quantization successful!")
             return quantized_model, performance
         except Exception as e2:
             if verbose:
-                print(f"⚠️  Dynamic quantization also failed: {e2}")
-                print("⚠️  Falling back to FP32 model evaluation")
+                print(f"Dynamic quantization also failed: {e2}")
+                print("Falling back to FP32 model evaluation")
             # 원본 FP32 모델로 평가
             original_model = model.to(device)
             original_model.eval()

@@ -112,7 +112,7 @@ def create_comparison_chart(results: dict, save_path: Path = None):
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✅ Comparison chart saved to: {save_path}")
+    print(f"Comparison chart saved to: {save_path}")
     plt.close()
 
 
@@ -179,7 +179,7 @@ def create_grouped_bar_chart(results: dict, save_path: Path = None):
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✅ Grouped comparison chart saved to: {save_path}")
+    print(f"Grouped comparison chart saved to: {save_path}")
     plt.close()
 
 
@@ -250,7 +250,7 @@ def create_performance_table(results: dict, save_path: Path = None):
     
     plt.title('Quantization Experiment Results Comparison', fontsize=14, fontweight='bold', pad=20)
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✅ Performance table saved to: {save_path}")
+    print(f"Performance table saved to: {save_path}")
     plt.close()
 
 
@@ -313,7 +313,7 @@ def create_improvement_chart(results: dict, save_path: Path = None):
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✅ Improvement chart saved to: {save_path}")
+    print(f"Improvement chart saved to: {save_path}")
     plt.close()
 
 
@@ -338,7 +338,7 @@ def load_training_history(checkpoint_dir: Path = config.CHECKPOINT_DIR):
         if 'history' in checkpoint:
             return checkpoint['history']
     except Exception as e:
-        print(f"⚠️  Could not load training history: {e}")
+        print(f"Could not load training history: {e}")
     
     return None
 
@@ -355,7 +355,7 @@ def create_training_history_chart(history: dict, save_path: Path = None):
         save_path = config.RESULTS_DIR / "training_history.png"
     
     if history is None or len(history.get('train_loss', [])) == 0:
-        print("⚠️  No training history available")
+        print("No training history available")
         return
     
     epochs = range(1, len(history['train_loss']) + 1)
@@ -390,7 +390,7 @@ def create_training_history_chart(history: dict, save_path: Path = None):
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✅ Training history chart saved to: {save_path}")
+    print(f"Training history chart saved to: {save_path}")
     plt.close()
 
 
@@ -406,7 +406,7 @@ def create_qat_training_chart(qat_history: dict, save_path: Path = None):
         save_path = config.RESULTS_DIR / "qat_training_history.png"
     
     if not qat_history or len(qat_history.get('train_loss', [])) == 0:
-        print("⚠️  No QAT training history available")
+        print("No QAT training history available")
         return
     
     epochs = range(1, len(qat_history['train_loss']) + 1)
@@ -439,7 +439,7 @@ def create_qat_training_chart(qat_history: dict, save_path: Path = None):
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✅ QAT training chart saved to: {save_path}")
+    print(f"QAT training chart saved to: {save_path}")
     plt.close()
 
 
@@ -490,7 +490,7 @@ def create_all_visualizations(results_dir: Path = None, checkpoint_dir: Path = N
     if baseline_history:
         create_training_history_chart(baseline_history, results_dir / "training_history.png")
     else:
-        print("⚠️  Baseline training history not found (checkpoint may not contain history)")
+        print("Baseline training history not found (checkpoint may not contain history)")
     
     # QAT 학습 히스토리 시각화
     print("\n[6] Creating QAT training history chart...")
@@ -498,11 +498,11 @@ def create_all_visualizations(results_dir: Path = None, checkpoint_dir: Path = N
     if qat_history:
         create_qat_training_chart(qat_history, results_dir / "qat_training_history.png")
     else:
-        print("⚠️  QAT training history not found in results")
+        print("QAT training history not found in results")
     
     print("\n" + "="*60)
-    print("✅ All visualizations generated successfully!")
-    print(f"📁 Saved to: {results_dir}")
+    print("All visualizations generated successfully!")
+    print(f"Saved to: {results_dir}")
     print("="*60)
 
 

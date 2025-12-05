@@ -370,5 +370,5 @@ if __name__ == "__main__":
         verbose=not args.quiet,
     )
     
-    print("\n✅ All experiments completed successfully!")
+    print("\nAll experiments completed successfully!")
 
